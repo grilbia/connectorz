@@ -23,7 +23,7 @@ app.use('/api/buzz' ,buzzRouter);
 
 // Root GET route
 app.get('/', (req, res) => {
-  res.send('Hello, this is a simple Express.js server!');
+  res.send('Hello, this is a simple Express.js server.!');
 });
 
 server.listen(PORT,HOST, () => {
