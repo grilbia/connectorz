@@ -1,6 +1,6 @@
 {
-  "id": "813b228b-9d88-4f25-ab02-2d05a9b2d5ed",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "2709c77a-6dcd-40cd-9578-886b6a455b2e",
+  "prevId": "813b228b-9d88-4f25-ab02-2d05a9b2d5ed",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -176,12 +176,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "new_column": {
-          "name": "new_column",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",

@@ -23,19 +23,19 @@ async function seed() {
       status: "accepted",
     }).onConflictDoNothing();
 
-     await db.insert(connections).values({
-      senderId: 1,
-      receiverId: 3,
-      type: "bestie",
-      status: "accepted",
-    }).onConflictDoNothing();
+    //  await db.insert(connections).values({
+    //   senderId: 1,
+    //   receiverId: 3,
+    //   type: "bestie",
+    //   status: "accepted",
+    // }).onConflictDoNothing();
 
     console.log("✅ Connections seeded");
 
     // 3. Insert some initial Buzz History
     await db.insert(buzzLogs).values([
       { senderId: 1, receiverId: 2 },
-      { senderId: 3, receiverId: 2 },
+      // { senderId: 3, receiverId: 2 },
     ]);
 
     console.log("✅ Buzz history seeded");
