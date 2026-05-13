@@ -2,15 +2,15 @@ CREATE TYPE "public"."affinity_type" AS ENUM('lover', 'bro', 'bestie');--> state
 CREATE TYPE "public"."status" AS ENUM('pending', 'accepted', 'declined');--> statement-breakpoint
 CREATE TABLE "buzz_logs" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"sender_id" serial NOT NULL,
-	"receiver_id" serial NOT NULL,
+	"sender_id" integer,
+	"receiver_id" integer,
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE "connections" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"sender_id" serial NOT NULL,
-	"receiver_id" serial NOT NULL,
+	"sender_id" integer,
+	"receiver_id" integer,
 	"type" "affinity_type" NOT NULL,
 	"status" "status" DEFAULT 'pending',
 	"created_at" timestamp DEFAULT now()
@@ -18,9 +18,10 @@ CREATE TABLE "connections" (
 --> statement-breakpoint
 CREATE TABLE "messages" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"connection_id" serial NOT NULL,
-	"sender_id" serial NOT NULL,
+	"sender_id" integer,
+	"receiver_id" integer,
 	"content" text NOT NULL,
+	"new_column" text NOT NULL,
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
@@ -37,5 +38,5 @@ ALTER TABLE "buzz_logs" ADD CONSTRAINT "buzz_logs_sender_id_users_id_fk" FOREIGN
 ALTER TABLE "buzz_logs" ADD CONSTRAINT "buzz_logs_receiver_id_users_id_fk" FOREIGN KEY ("receiver_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connections" ADD CONSTRAINT "connections_sender_id_users_id_fk" FOREIGN KEY ("sender_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connections" ADD CONSTRAINT "connections_receiver_id_users_id_fk" FOREIGN KEY ("receiver_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "messages" ADD CONSTRAINT "messages_connection_id_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."connections"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "messages" ADD CONSTRAINT "messages_sender_id_users_id_fk" FOREIGN KEY ("sender_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "messages" ADD CONSTRAINT "messages_sender_id_users_id_fk" FOREIGN KEY ("sender_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "messages" ADD CONSTRAINT "messages_receiver_id_users_id_fk" FOREIGN KEY ("receiver_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;

@@ -9,12 +9,11 @@ import { connections } from "../db/schema.js"; // Import your connections table
 
 const buzzRouter = express.Router();
 
-// function getAuthenticatedUserId(req) {
-// //   const userId = req.user?.id;
-// //   return typeof userId === 'number' ? userId : Number(userId || NaN);
-
-// return 1;
-// }
+function getAuthenticatedUserId(req) {
+  // Replace this with real authentication extraction later.
+  const userId = req.user?.id;
+  return typeof userId === 'number' ? userId : Number(userId || NaN);
+}
 
 // POST /api/buzz/send
 buzzRouter.post("/send", async (req, res) => {
@@ -22,8 +21,7 @@ buzzRouter.post("/send", async (req, res) => {
   try {
     // 1. Validate Input
     const { receiverId } = SendBuzzSchema.parse(req.body);
-    // const senderId = getAuthenticatedUserId(req);
-    const senderId = 1;
+    const senderId = getAuthenticatedUserId(req) || 1;
     if (!senderId || Number.isNaN(senderId)) {
       return res.status(401).json({ error: "Unauthorizd" ,id: `${senderId}`});
     }

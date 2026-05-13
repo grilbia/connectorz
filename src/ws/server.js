@@ -1,14 +1,16 @@
 import { WebSocket, WebSocketServer } from "ws";
-// import { wsArcjet } from "../arcjet.js"; // Keeping your security middleware
+import { db } from "../db/db.js";
+import { buzzLogs } from "../db/schema.js";
 import url from 'url';
+import { sendMessageService } from "../services/chatService.js";
+
+const onlineUsers = new Map();
 
 function sendJson(socket, payload) {
-    if (socket.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify(payload));
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(payload));
+    }
 }
-
-// Memory store to map UserIDs to their active Sockets
-const onlineUsers = new Map();
 
 export function attachWebSocketServer(server) {
     const wss = new WebSocketServer({
@@ -18,7 +20,6 @@ export function attachWebSocketServer(server) {
     });
 
     wss.on('connection', async (socket, req) => {
-        // 1. Extract UserID from URL params (e.g., ws://your-url/ws?userId=123)
         const parameters = url.parse(req.url, true).query;
         const userId = parameters.userId;
 
@@ -27,53 +28,103 @@ export function attachWebSocketServer(server) {
             return;
         }
 
-        // 2. Arcjet Security Check
-        // if (wsArcjet) {
-        //     try {
-        //         const decision = await wsArcjet.protect(req);
-        //         if (decision.isDenied()) {
-        //             const code = decision.reason.isRateLimit() ? 1013 : 1008;
-        //             socket.close(code, 'Access denied');
-        //             return;
-        //         }
-        //     } catch (e) {
-        //         console.error('WS upgrade protection error', e);
-        //         socket.close(1011, 'Server security error');
-        //         return;
-        //     }
-        // }
-
-        // 3. Register User as Online
         socket.userId = userId;
         socket.isAlive = true;
-        onlineUsers.set(userId, socket);
-        console.log(`User ${userId} connected`);
+        onlineUsers.set(String(userId), socket);
+        console.log(`📡 User ${userId} connected`);
 
         socket.on('pong', () => { socket.isAlive = true; });
 
-        // 4. Handle Incoming Messages (e.g., Buzz requests via Socket)
-        socket.on('message', (message) => {
+        // --- Message Handling ---
+        socket.on('message', async (raw) => {
             try {
-                const payload = JSON.parse(message);
-                
-                if (payload.type === 'send_buzz') {
-                    handleBuzz(userId, payload.receiverId);
+                const messageString = raw.toString();
+                console.log(`📩 Received from ${userId}: ${messageString}`);
+
+                let data;
+                try {
+                    data = JSON.parse(messageString);
+                } catch (e) {
+                    sendJson(socket, { type: 'error', message: 'Invalid JSON format' });
+                    return;
+                }
+
+                // Handle Buzz
+                if (data.type === 'send_buzz') {
+                    try {
+                        // 1. Persist to database
+                        await db.insert(buzzLogs).values({
+                            senderId: Number(userId), // Ensure it's a number
+                            receiverId: Number(data.receiverId),
+                        });
+
+                        // 2. Trigger the real-time relay to the receiver
+                        handleBuzz(userId, data.receiverId);
+
+                        // 3. Send Success Acknowledge to the SENDER
+                        sendJson(socket, {
+                            type: 'buzz_ack',
+                            status: 'success',
+                            receiverId: data.receiverId,
+                            message: "Buzzed successfully!"
+                        });
+
+                    } catch (e) {
+                        console.error("Database error during buzz:", e);
+
+                        // 4. Send Error Acknowledge to the SENDER
+                        sendJson(socket, {
+                            type: 'buzz_ack',
+                            status: 'error',
+                            message: "Failed to log buzz in database."
+                        });
+                    }
+                }
+
+                // Handle Chat Messages (using the service for persistence)
+                else if (data.type === 'send_message') {
+                    if (!data.receiverId || !data.content) {
+                        sendJson(socket, { type: 'error', message: 'receiverId and content are required' });
+                        return;
+                    }
+
+                    try {
+                        const result = await sendMessageService({
+                            senderId: userId,
+                            receiverId: data.receiverId,
+                            content: data.content,
+                            tempId: data.tempId,
+                            onlineUsers,
+                            sendJson
+                        });
+
+                        sendJson(socket, { 
+                            type: 'message_ack', 
+                            tempId: data.tempId, 
+                            status: result.status 
+                        });
+                    } catch (serviceErr) {
+                        console.error("❌ Service Error:", serviceErr);
+                        sendJson(socket, { type: 'error', message: serviceErr.message || 'Failed to send message' });
+                    }
+                } else {
+                    sendJson(socket, { type: 'error', message: `Unknown message type: ${data.type}` });
                 }
             } catch (err) {
-                console.error("Invalid JSON received");
+                console.error("❌ WS Processing Error:", err.message);
+                sendJson(socket, { type: 'error', message: 'Internal server error during processing' });
             }
         });
 
-        // 5. Cleanup on Disconnect
         socket.on('close', () => {
-            onlineUsers.delete(userId);
-            console.log(`User ${userId} disconnected`);
+            onlineUsers.delete(String(userId));
+            console.log(`🔌 User ${userId} disconnected`);
         });
 
-        sendJson(socket, { type: 'welcome', message: 'Connected to BuzzServer' });
+        sendJson(socket, { type: 'welcome', message: 'Connected to Server' });
     });
 
-    // Heartbeat to clear broken connections
+    // Heartbeat
     const interval = setInterval(() => {
         wss.clients.forEach((ws) => {
             if (ws.isAlive === false) return ws.terminate();
@@ -83,28 +134,40 @@ export function attachWebSocketServer(server) {
     }, 30000);
 
     /**
-     * Logic to send a buzz to a specific friend
+     * Internal Buzz Logic
      */
     function handleBuzz(senderId, receiverId) {
-        const targetSocket = onlineUsers.get(receiverId.toString());
-
-        if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+        const targetSocket = onlineUsers.get(String(receiverId));
+        if (targetSocket) {
             sendJson(targetSocket, {
                 type: 'buzz_received',
                 from: senderId,
                 timestamp: new Date().toISOString()
             });
-            console.log(`Buzz sent from ${senderId} to ${receiverId}`);
+            console.log(`⚡ Buzz: ${senderId} -> ${receiverId}`);
         } else {
-            // Here you would trigger FCM (Firebase) for background push notifications
-            console.log(`User ${receiverId} is offline. Triggering Push Notification...`);
+            console.log(`🔕 User ${receiverId} offline. (FCM Trigger Point)`);
         }
     }
 
-    // Exported helper for your REST API to use
-    function triggerExternalBuzz(senderId, receiverId) {
-        handleBuzz(senderId, receiverId);
-    }
-
-    return { triggerExternalBuzz };
+    /**
+     * HELPERS FOR REST API (app.locals)
+     */
+    return {
+        onlineUsers,
+        sendJson,
+        triggerExternalBuzz: (senderId, receiverId) => {
+            handleBuzz(senderId, receiverId);
+        },
+        triggerExternalMessage: async (senderId, receiverId, content) => {
+            // Using the service ensures REST messages are also saved to DB
+            return await sendMessageService({
+                senderId,
+                receiverId,
+                content,
+                onlineUsers,
+                sendJson
+            });
+        }
+    };
 }
